@@ -40,14 +40,17 @@ Joystick loadJoystick(unsigned int id)
 Joystick &joystickById(std::vector<Joystick> &joysticks, unsigned int id)
 {
 	auto joystick = std::find_if(begin(joysticks), end(joysticks),
-		[id](const auto &j) { return j.id == id; });
+		[id](const auto &j)
+	{
+		return j.id == id;
+	});
 
-	if (joystick == joysticks.end())
+	if (joystick == joysticks.end()) [[unlikely]]
 	{
 		joysticks.emplace_back(loadJoystick(id));
 		return joysticks.back();
 	}
-	else
+	else [[likely]]
 	{
 		return *joystick;
 	}
@@ -68,7 +71,8 @@ int main(int argc, const char **argv)
 	{
 		spdlog::error("Command line options are out of reasonable range.");
 		for (auto const &arg : args)
-			if (arg.second.isString()) { spdlog::info("Parameter set: {}='{}'", arg.first, arg.second.asString()); }
+			if (arg.second.isString())
+				spdlog::info("Parameter set: {}='{}'", arg.first, arg.second.asString());
 		abort();
 	}
 
