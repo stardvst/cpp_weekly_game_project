@@ -1,31 +1,12 @@
 #pragma once
 
+#include <variant>
+#include <optional>
+
 #include <SFML/Window/Joystick.hpp>
 
 namespace Game
 {
-
-struct Joystick
-{
-	unsigned int id;
-	std::string name;
-	std::array<bool, sf::Joystick::ButtonCount> buttonState;
-	std::array<float, sf::Joystick::AxisCount> axisPosition;
-};
-
-Joystick loadJoystick(unsigned int id)
-{
-	const auto identification = sf::Joystick::getIdentification(id);
-	Joystick js{ id, static_cast<std::string>(identification.name), {}, {} };
-
-	for (unsigned int btn = 0; btn < sf::Joystick::ButtonCount; ++btn)
-		js.buttonState[btn] = sf::Joystick::isButtonPressed(id, btn);
-
-	for (unsigned int axis = 0; axis < sf::Joystick::ButtonCount; ++axis)
-		js.axisPosition[axis] = sf::Joystick::getAxisPosition(id, static_cast<sf::Joystick::Axis>(axis));
-
-	return js;
-}
 
 constexpr std::string_view toString(const sf::Joystick::Axis &axis)
 {
@@ -51,23 +32,90 @@ constexpr std::string_view toString(const sf::Joystick::Axis &axis)
 	abort();
 }
 
-Joystick &joystickById(std::vector<Joystick> &joysticks, unsigned int id)
+struct GameState
 {
-	auto joystick = std::find_if(begin(joysticks), end(joysticks),
-		[id](const auto &j)
-	{
-		return j.id == id;
-	});
 
-	if (joystick == joysticks.end()) [[unlikely]]
+	struct Joystick
 	{
-		joysticks.emplace_back(loadJoystick(id));
-	return joysticks.back();
-	}
-	else [[likely]]
+		unsigned int id;
+		unsigned int buttonCount;
+		std::array<bool, sf::Joystick::ButtonCount> buttonState;
+		std::array<float, sf::Joystick::AxisCount> axisPosition;
+	};
+
+	static void refreshJoystick(Joystick &js)
 	{
-		return *joystick;
+		sf::Joystick::update();
+
+		for (unsigned int btn = 0; btn < sf::Joystick::ButtonCount; ++btn)
+			js.buttonState[btn] = sf::Joystick::isButtonPressed(js.id, btn);
+
+		for (unsigned int axis = 0; axis < sf::Joystick::ButtonCount; ++axis)
+			js.axisPosition[axis] = sf::Joystick::getAxisPosition(js.id, static_cast<sf::Joystick::Axis>(axis));
 	}
-}
+
+	static Joystick loadJoystick(unsigned int id)
+	{
+		Joystick js{ id, sf::Joystick::getButtonCount(id), {}, {} };
+		refreshJoystick(js);
+		return js;
+	}
+	static Joystick &joystickById(std::vector<Joystick> &joysticks, unsigned int id)
+	{
+		auto joystick = std::find_if(begin(joysticks), end(joysticks),
+			[id](const auto &j)
+		{
+			return j.id == id;
+		});
+
+		if (joystick == joysticks.end()) [[unlikely]]
+		{
+			joysticks.emplace_back(loadJoystick(id));
+		return joysticks.back();
+		}
+		else [[likely]]
+		{
+			return *joystick;
+		}
+	}
+
+	struct CloseWindow
+	{
+	};
+
+	using Event = std::variant<Joystick, CloseWindow, std::nullopt_t>;
+	Event processEvent(const sf::Event &event)
+	{
+		switch (event.type)
+		{
+			case sf::Event::Closed:
+				return CloseWindow{};
+			case sf::Event::JoystickButtonPressed:
+			{
+				auto &js = joystickById(joySticks, event.joystickButton.joystickId);
+				js.buttonState[event.joystickButton.button] = true;
+				return js;
+			}
+			case sf::Event::JoystickButtonReleased:
+			{
+				auto &js = joystickById(joySticks, event.joystickButton.joystickId);
+				js.buttonState[event.joystickButton.button] = false;
+				return js;
+			}
+			case sf::Event::JoystickMoved:
+			{
+				auto &js = joystickById(joySticks, event.joystickMove.joystickId);
+				js.axisPosition[event.joystickMove.axis] = event.joystickMove.position;
+				return js;
+			}
+			default:
+				return std::nullopt;
+		}
+	}
+
+	std::vector<Joystick> joySticks;
+	std::chrono::milliseconds msElapsed;
+
+};
 
 }
